@@ -432,6 +432,7 @@ func (cfg *config) checkOneLeader() int {
 		for i := 0; i < cfg.n; i++ {
 			if cfg.connected[i] {
 				if term, leader := cfg.rafts[i].GetState(); leader {
+					// print("get leader: ", i, "\n")
 					leaders[term] = append(leaders[term], i)
 				}
 			}

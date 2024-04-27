@@ -99,6 +99,7 @@ func (e *ClientEnd) Call(svcMeth string, args interface{}, reply interface{}) bo
 	// send the request.
 	//
 	select {
+	// 通过管道将消息进行发送 e.ch rn.endCh 为管道
 	case e.ch <- req:
 		// the request has been sent.
 	case <-e.done:
