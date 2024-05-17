@@ -315,10 +315,8 @@ func (rf *Raft) ticker() {
 			// leader 是不需要参与选举的
 			// start a leader election
 			// send RequestVote RPCs to all other servers
-			
 			// 成为candidate
 			rf.role = Candidate
-			
 			// 重置时间戳
 			rf.timestamp = time.Now()
 			rf.timeLimit = time.Duration((500 + (rand.Int63() % 500))) * time.Millisecond
@@ -416,7 +414,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.voteCount = 0
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
-
 	// start ticker goroutine to start elections
 	go rf.ticker()
 	return rf
