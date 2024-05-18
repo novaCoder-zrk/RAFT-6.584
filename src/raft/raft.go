@@ -19,7 +19,7 @@ package raft
 
 import (
 	//	"bytes"
-	"fmt"
+	//"fmt"
 	"math/rand"
 	"sort"
 	"sync"
@@ -261,26 +261,28 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	reply.Success = false
 	// 如果请求的term小于当前term，直接拒绝
 	if args.Term < rf.currentTerm {
-		fmt.Printf("node %d reject appendEntries from node %d, args.Term %d rf.currentTerm %d\n", rf.me, args.LeaderId, args.Term, rf.currentTerm)
+		//fmt.Printf("node %d reject appendEntries from node %d, args.Term %d rf.currentTerm %d\n", rf.me, args.LeaderId, args.Term, rf.currentTerm)
 		return
 	}
+	if args.Term == rf.currentTerm && rf.votedFor == -1 {
+		rf.currentTerm = args.Term
+		rf.votedFor = args.LeaderId
+		rf.role = Follower
+		//fmt.Printf("node %d reject appendEntries from node %d, votedFor %d LeaderId %d\n", rf.me, args.LeaderId, rf.votedFor, args.LeaderId)
+	}
+	rf.timestamp = time.Now()
+	rf.timeLimit = time.Duration((200 + (rand.Int63() % 500))) * time.Millisecond
+	
 	if len(rf.log) <= args.PreLogIndex {
-		fmt.Printf("node %d reject appendEntries from node %d, loglen %d  PrelogIndex %d \n", rf.me, args.LeaderId, len(rf.log), args.PreLogIndex)
+		//fmt.Printf("node %d reject appendEntries from node %d, loglen %d  PrelogIndex %d \n", rf.me, args.LeaderId, len(rf.log), args.PreLogIndex)
 		return
 	}
 
 	if args.PreLogIndex > 0 && rf.log[args.PreLogIndex].Term != args.PreLogTerm {
-		fmt.Printf("node %d reject appendEntries from node %d, log[args.PreLogIndex].Term %d args.PreLogTerm %d\n", rf.me, args.LeaderId, rf.log[args.PreLogIndex].Term, args.PreLogTerm)
+		//fmt.Printf("node %d reject appendEntries from node %d, log[args.PreLogIndex].Term %d args.PreLogTerm %d\n", rf.me, args.LeaderId, rf.log[args.PreLogIndex].Term, args.PreLogTerm)
 		return
 	}
 
-	if args.Term == rf.currentTerm && rf.votedFor != args.LeaderId {
-		rf.currentTerm = args.Term
-		rf.votedFor = args.LeaderId
-		rf.role = Follower
-		fmt.Printf("node %d reject appendEntries from node %d, votedFor %d LeaderId %d\n", rf.me, args.LeaderId, rf.votedFor, args.LeaderId)
-		return 
-	}
 
 	// if args.Term == rf.currentTerm && rf.votedFor == args.LeaderId {
 		
@@ -301,18 +303,17 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		}else{
 			rf.log = append(rf.log, entry)
 		}
-		fmt.Printf("node %d append [%d]log %v\n", rf.me, args.PreLogIndex+i + 1, rf.log[args.PreLogIndex + i + 1].Command)
+		//fmt.Printf("node %d append [%d]log\n", rf.me, args.PreLogIndex+i + 1)
 	}
 
 	if args.LeaderCommit > rf.commitIndex {
 		rf.commitIndex = args.PreLogIndex + len(args.Entries) 
-		fmt.Printf("node %d update commitIndex %d\n", rf.me, rf.commitIndex)
+		//fmt.Printf("node %d update commitIndex %d\n", rf.me, rf.commitIndex)
 	}
-	fmt.Printf("node %d accept appendEntries from node %d, loglen %d\n", rf.me, args.LeaderId, len(rf.log))
+	//fmt.Printf("node %d accept appendEntries from node %d, loglen %d\n", rf.me, args.LeaderId, len(rf.log))
 	reply.Term = rf.currentTerm
 	reply.Success = true
-	rf.timestamp = time.Now()
-	rf.timeLimit = time.Duration((200 + (rand.Int63() % 500))) * time.Millisecond
+	
 }
 
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
@@ -350,7 +351,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	rf.log = append(rf.log, logEntry)
 	index = len(rf.log)
 	term = rf.currentTerm
-	fmt.Printf("start: node %d is leader at term %d append log\n", rf.me, rf.currentTerm)
+	//fmt.Printf("start: node %d is leader at term %d append log\n", rf.me, rf.currentTerm)
 	// index 起始值为 1
 	return index, term, isLeader
 }
@@ -414,7 +415,7 @@ func(rf *Raft) handleAppendEntriesReply(raft int,reply *AppendEntriesReply, args
 		
 		rf.matchIndex[raft] = args.PreLogIndex + len(args.Entries)
 		rf.nextIndex[raft] = rf.matchIndex[raft] + 1
-		fmt.Printf("node %d append success to node %d nextIndex %d matchIndex %d\n", rf.me, raft, rf.nextIndex[raft], rf.matchIndex[raft])
+		//fmt.Printf("node %d append success to node %d nextIndex %d matchIndex %d\n", rf.me, raft, rf.nextIndex[raft], rf.matchIndex[raft])
 		rf.updateCommitIndex()
 	}else{
 		// 失败
@@ -435,22 +436,29 @@ func (rf *Raft) updateCommitIndex() {
 	// 1,2,2
 	// 更新commitIndex, 就是找中位数
 	sortedMatchIndex := make([]int, 0)
-	sortedMatchIndex = append(sortedMatchIndex, len(rf.log)-1)
+	
+	
 	for i := 0; i < len(rf.peers); i++ {
 		if i == rf.me {
-			continue
-		}
+			sortedMatchIndex = append(sortedMatchIndex, len(rf.log)-1)
+		}else{
 		sortedMatchIndex = append(sortedMatchIndex, rf.matchIndex[i])
+		}
 	}
+	tmpMatchIndex := make([]int, len(sortedMatchIndex))
+	copy(tmpMatchIndex, sortedMatchIndex)
 	sort.Ints(sortedMatchIndex)
-	fmt.Printf("node %d sortedMatchIndex %v\n", rf.me, sortedMatchIndex)
+
 	newCommitIndex := sortedMatchIndex[len(rf.peers)/2]
 	// 如果index属于snapshot范围，那么不要检查term了，因为snapshot的一定是集群提交的
 	// 否则还是检查log的term是否满足条件
 	if newCommitIndex > rf.commitIndex && (rf.log[newCommitIndex].Term == rf.currentTerm) {
 		rf.commitIndex = newCommitIndex
 	}
-	fmt.Printf("LeaderNode[%d] updateCommitIndex, commitIndex[%d] \n", rf.me, rf.commitIndex)
+	if rf.role == Leader {
+		//fmt.Printf("node %d MatchIndex %v commitIndex %d\n", rf.me, tmpMatchIndex, rf.commitIndex)
+	}
+	//fmt.Printf("LeaderNode[%d] updateCommitIndex, commitIndex[%d] \n", rf.me, rf.commitIndex)
 }
 
 func (rf *Raft) ticker() {
@@ -525,7 +533,7 @@ func (rf *Raft) ticker() {
 					
 					args.Entries = append(args.Entries, rf.log[rf.nextIndex[i]:]...)
 				}
-				fmt.Printf("leader %d term %d send heart beat to node %d entires num %d Prelogindex %d commiteIndex %d\n", rf.me, rf.currentTerm,i, len(args.Entries), args.PreLogIndex, args.LeaderCommit)
+				//fmt.Printf("leader %d term %d send heart beat to node %d entires num %d Prelogindex %d commiteIndex %d\n", rf.me, rf.currentTerm,i, len(args.Entries), args.PreLogIndex, args.LeaderCommit)
 				// log 相关
 
 				go func(server int) {
@@ -563,10 +571,10 @@ func (rf *Raft) handleRequestVoteReply(reply *RequestVoteReply) {
 			rf.nextIndex = make([]int, len(rf.peers))
 			rf.matchIndex = make([]int, len(rf.peers))
 			for i:=0; i<len(rf.peers); i++ {
-				rf.nextIndex[i] = len(rf.log) + 1
+				rf.nextIndex[i] = len(rf.log)
 				rf.matchIndex[i] = -1
 			}
-			// fmt.Printf("node %d is leader at term %d \n", rf.me, rf.currentTerm)
+			//fmt.Printf("node %d is leader at term %d \n", rf.me, rf.currentTerm)
 		}
 	}
 }
